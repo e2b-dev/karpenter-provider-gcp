@@ -1,0 +1,113 @@
+name: e2b image build
+
+# Builds the e2b downstream controller image. See DOWNSTREAM.md.
+#
+# Push a tag vX.Y.Z-e2b.N (X.Y.Z is the upstream release the branch is based on,
+# N our counter) on a commit that is on the `downstream` branch. Upstream's own
+# workflows are gated to cloudpilot-ai/karpenter-provider-gcp and never run here;
+# this one is gated the other way and never runs upstream.
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+-e2b.[0-9]+'
+
+jobs:
+  image-publish:
+    if: github.repository == 'e2b-dev/karpenter-provider-gcp'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      KO_DOCKER_REPO: us-docker.pkg.dev/e2b-artifacts/karpenter-provider-gcp/controller
+    steps:
+      - name: Set tag
+        run: echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_ENV"
+        shell: bash
+
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # A tag can be pushed on any commit; only what is on `downstream` may ship.
+      - name: Require the tagged commit to be on downstream
+        run: |
+          git fetch --no-tags origin downstream:refs/remotes/origin/downstream
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/downstream; then
+            echo "::error::$GITHUB_SHA ($tag) is not on the downstream branch; refusing to build it"
+            exit 1
+          fi
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      # The publisher identity and provider come from the terragrunt repo
+      # (gcp/e2b-artifacts/_global/iam/github-actions-karpenter). It can write
+      # the karpenter-provider-gcp repository and nothing else.
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.E2B_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.E2B_PUBLISHER_SERVICE_ACCOUNT }}
+          token_format: access_token
+
+      - uses: ko-build/setup-ko@61b4d1d396f5b2e7d6bb6fefdce3dc38d1a13445 # v0.10
+
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.3
+
+      - name: Log in to Artifact Registry
+        env:
+          ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: printf '%s' "$ACCESS_TOKEN" | ko login us-docker.pkg.dev -u oauth2accesstoken --password-stdin
+
+      - name: Build and publish image
+        id: image
+        env:
+          IMAGE_TAG: ${{ env.tag }}
+        run: |
+          IMAGE=$(ko build --bare github.com/cloudpilot-ai/karpenter-provider-gcp/cmd/controller \
+            --tags "$IMAGE_TAG" --sbom=spdx --sbom-dir "$RUNNER_TEMP/sboms")
+          # ko includes the release tag before the digest; retain the immutable reference.
+          IMAGE=${IMAGE/":$IMAGE_TAG@"/@}
+          [[ "$IMAGE" =~ ^us-docker\.pkg\.dev/e2b-artifacts/karpenter-provider-gcp/controller@sha256:[a-f0-9]{64}$ ]] || {
+            echo 'Expected exactly one digest-qualified controller image from ko build' >&2
+            exit 1
+          }
+          echo "reference=$IMAGE" >> "$GITHUB_OUTPUT"
+          echo "digest=${IMAGE##*@}" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$IMAGE" > "$RUNNER_TEMP/sboms/image-reference.txt"
+
+      - name: Sign image
+        env:
+          IMAGE: ${{ steps.image.outputs.reference }}
+        run: |
+          cosign sign --yes --new-bundle-format=false --use-signing-config=false \
+            --registry-referrers-mode=legacy "$IMAGE"
+
+      - name: Verify image signature
+        env:
+          IMAGE: ${{ steps.image.outputs.reference }}
+        run: |
+          cosign verify --new-bundle-format=false --experimental-oci11=false \
+            --certificate-identity "https://github.com/$GITHUB_WORKFLOW_REF" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com "$IMAGE"
+
+      - name: Attest image build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: us-docker.pkg.dev/e2b-artifacts/karpenter-provider-gcp/controller
+          subject-digest: ${{ steps.image.outputs.digest }}
+          push-to-registry: false
+
+      - name: Retain SPDX SBOMs
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2b-image-sboms
+          path: ${{ runner.temp }}/sboms/
+          if-no-files-found: error
