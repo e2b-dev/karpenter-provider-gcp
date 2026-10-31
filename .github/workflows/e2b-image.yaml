@@ -17,10 +17,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      packages: write
       id-token: write
       attestations: write
     env:
-      KO_DOCKER_REPO: us-docker.pkg.dev/e2b-artifacts/karpenter-provider-gcp/controller
+      KO_DOCKER_REPO: ghcr.io/e2b-dev/karpenter-provider-gcp
     steps:
       - name: Set tag
         run: echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_ENV"
@@ -44,27 +45,17 @@ jobs:
           go-version-file: go.mod
           cache: false
 
-      # The publisher identity and provider come from the terragrunt repo
-      # (gcp/e2b-artifacts/_global/iam/github-actions-karpenter). It can write
-      # the karpenter-provider-gcp repository and nothing else.
-      - name: Authenticate to Google Cloud
-        id: auth
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
-        with:
-          workload_identity_provider: ${{ vars.E2B_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.E2B_PUBLISHER_SERVICE_ACCOUNT }}
-          token_format: access_token
-
       - uses: ko-build/setup-ko@61b4d1d396f5b2e7d6bb6fefdce3dc38d1a13445 # v0.10
 
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
           cosign-release: v3.1.3
 
-      - name: Log in to Artifact Registry
+      # The workflow's own token: it can write packages linked to this repository.
+      - name: Log in to GitHub Container Registry
         env:
-          ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
-        run: printf '%s' "$ACCESS_TOKEN" | ko login us-docker.pkg.dev -u oauth2accesstoken --password-stdin
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GITHUB_TOKEN" | ko login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
 
       - name: Build and publish image
         id: image
@@ -75,7 +66,7 @@ jobs:
             --tags "$IMAGE_TAG" --sbom=spdx --sbom-dir "$RUNNER_TEMP/sboms")
           # ko includes the release tag before the digest; retain the immutable reference.
           IMAGE=${IMAGE/":$IMAGE_TAG@"/@}
-          [[ "$IMAGE" =~ ^us-docker\.pkg\.dev/e2b-artifacts/karpenter-provider-gcp/controller@sha256:[a-f0-9]{64}$ ]] || {
+          [[ "$IMAGE" =~ ^ghcr\.io/e2b-dev/karpenter-provider-gcp@sha256:[a-f0-9]{64}$ ]] || {
             echo 'Expected exactly one digest-qualified controller image from ko build' >&2
             exit 1
           }
@@ -101,7 +92,7 @@ jobs:
       - name: Attest image build provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-name: us-docker.pkg.dev/e2b-artifacts/karpenter-provider-gcp/controller
+          subject-name: ghcr.io/e2b-dev/karpenter-provider-gcp
           subject-digest: ${{ steps.image.outputs.digest }}
           push-to-registry: false
 
