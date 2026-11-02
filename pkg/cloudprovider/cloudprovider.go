@@ -65,6 +65,9 @@ type CloudProvider struct {
 	instanceTypeProvider instancetype.Provider
 	instanceProvider     instance.Provider
 	instanceTypeStore    *nodeoverlay.InstanceTypeStore
+
+	// now is the clock used for age-based drift; nil means time.Now.
+	now func() time.Time
 }
 
 func New(kubeClient client.Client,

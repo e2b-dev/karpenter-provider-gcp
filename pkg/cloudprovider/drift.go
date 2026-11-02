@@ -16,7 +16,9 @@ package cloudprovider
 
 import (
 	"context"
+	"hash/fnv"
 	"strings"
+	"time"
 
 	"github.com/samber/lo"
 	corev1 "k8s.io/api/core/v1"
@@ -32,6 +34,7 @@ import (
 const (
 	NodeClassDrift cloudprovider.DriftReason = "NodeClassDrift"
 	ImageDrift     cloudprovider.DriftReason = "ImageDrift"
+	AgeDrift       cloudprovider.DriftReason = "AgeDrift"
 )
 
 func (c *CloudProvider) isNodeClassDrifted(ctx context.Context, nodeClaim *karpv1.NodeClaim, _ *karpv1.NodePool, nodeClass *v1alpha1.GCENodeClass) cloudprovider.DriftReason {
@@ -45,7 +48,43 @@ func (c *CloudProvider) isNodeClassDrifted(ctx context.Context, nodeClaim *karpv
 		return drifted
 	}
 
+	if drifted := c.isAgeDrifted(nodeClaim, nodeClass); drifted != "" {
+		log.FromContext(ctx).Info("node age drifted", "drifted", drifted, "maxNodeAge", nodeClass.Spec.MaxNodeAge.Duration)
+		return drifted
+	}
+
 	return ""
+}
+
+// isAgeDrifted reports AgeDrift once a NodeClaim has lived for its share of
+// spec.maxNodeAge. The share is deterministic per NodeClaim name and lies in
+// [90%, 100%] of maxNodeAge, so nodes created together rotate spread out rather
+// than all at once, and a node is never kept past maxNodeAge itself.
+func (c *CloudProvider) isAgeDrifted(nodeClaim *karpv1.NodeClaim, nodeClass *v1alpha1.GCENodeClass) cloudprovider.DriftReason {
+	maxAge := nodeClass.Spec.MaxNodeAge
+	if maxAge == nil || maxAge.Duration <= 0 || nodeClaim.CreationTimestamp.IsZero() {
+		return ""
+	}
+	if c.clock().Sub(nodeClaim.CreationTimestamp.Time) < ageDriftThreshold(nodeClaim.Name, maxAge.Duration) {
+		return ""
+	}
+	return AgeDrift
+}
+
+// ageDriftThreshold returns maxAge minus a per-name jitter of up to 10% of maxAge.
+func ageDriftThreshold(name string, maxAge time.Duration) time.Duration {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(name))
+	fraction := float64(h.Sum32()) / float64(1<<32) // [0, 1)
+	jitter := time.Duration(float64(maxAge) / 10 * fraction)
+	return maxAge - jitter
+}
+
+func (c *CloudProvider) clock() time.Time {
+	if c.now == nil {
+		return time.Now()
+	}
+	return c.now()
 }
 
 func (c *CloudProvider) isImageDrifted(nodeClaim *karpv1.NodeClaim, nodeClass *v1alpha1.GCENodeClass) cloudprovider.DriftReason {

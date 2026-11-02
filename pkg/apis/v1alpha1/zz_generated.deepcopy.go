@@ -386,6 +386,11 @@ func (in *GCENodeClassSpec) DeepCopyInto(out *GCENodeClassSpec) {
 		*out = new(v1.Duration)
 		**out = **in
 	}
+	if in.MaxNodeAge != nil {
+		in, out := &in.MaxNodeAge, &out.MaxNodeAge
+		*out = new(v1.Duration)
+		**out = **in
+	}
 	return
 }
 

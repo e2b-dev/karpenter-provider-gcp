@@ -170,6 +170,19 @@ type GCENodeClassSpec struct {
 	// +kubebuilder:validation:XValidation:message="preemptionNoticeDuration must not exceed 120s",rule="duration(self) <= duration('120s')"
 	// +optional
 	PreemptionNoticeDuration *metav1.Duration `json:"preemptionNoticeDuration,omitempty"`
+	// MaxNodeAge rotates nodes by age. A node whose NodeClaim is older than this is
+	// reported as drifted, so Karpenter launches its replacement first, then drains the
+	// old node within the NodePool's terminationGracePeriod and under its disruption
+	// budgets. That is the graceful counterpart of the NodePool's expireAfter, which
+	// deletes an expired node before any replacement exists. Each node drifts at a
+	// deterministic point between 90% and 100% of this value, chosen from its name, so a
+	// fleet created at once does not come up for rotation in the same minute. The field
+	// is excluded from the NodeClass hash: changing it does not itself drift nodes.
+	// Leave unset to disable age-based rotation.
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Pattern=`^([0-9]+(s|m|h))+$`
+	// +optional
+	MaxNodeAge *metav1.Duration `json:"maxNodeAge,omitempty" hash:"ignore"`
 }
 
 // LocalSSDMode controls how local SSDs are exposed to workloads.

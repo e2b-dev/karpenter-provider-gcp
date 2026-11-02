@@ -235,7 +235,17 @@ If the chosen machine type does not support the requested confidential type, GCE
 
 The default `ContainerOptimizedOS` and `Ubuntu` images boot as Confidential VMs on supported families without any image change. GPU Confidential VMs are an exception: an A3 instance with an attached H100 GPU using Intel TDX requires a TDX-specific image (for example `cos-tdx-*`), which is not available through the `family` image selectors. Pin such an image by its full resource URL with `imageSelectorTerms[].id`; see the [GCP supported configurations](https://cloud.google.com/confidential-computing/confidential-vm/docs/supported-configurations#supported-images-gpu).
 
-## Nested virtualization
+## Node age rotation
+
+`maxNodeAge` rotates nodes on a schedule. Once a node has lived that long, Karpenter treats it as drifted: it launches the replacement, waits for it to initialize, then taints and drains the old node under the NodePool's `terminationGracePeriod` and disruption `budgets`.
+
+```yaml
+maxNodeAge: 336h  # two weeks
+```
+
+This differs from the NodePool's `expireAfter`, which deletes an expired node before any replacement exists and ignores budgets. Use `maxNodeAge` when a node's pods need a long drain, for example a service that must finish in-flight work before it can stop, and capacity must not dip while that happens. Pair it with a `terminationGracePeriod` long enough for that drain and a `budgets` entry that bounds how many nodes rotate at once.
+
+Each node rotates at a fixed point between 90% and 100% of `maxNodeAge`, chosen from its name, so nodes created together do not all come up for rotation in the same minute. Changing `maxNodeAge` does not itself drift nodes; the new value simply applies to the next check, which runs every few minutes.
 
 Nested virtualization lets pods on the node run their own virtual machines, for example with KVM-based sandboxes or emulators.
 

@@ -19,6 +19,7 @@ package cloudprovider
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
@@ -376,6 +377,15 @@ func TestNodeClassDriftFieldCoverage(t *testing.T) {
 			want: "",
 		},
 		{
+			// MaxNodeAge is tagged hash:"ignore": changing the rotation policy must not
+			// itself roll every node; isAgeDrifted applies the new value on its own.
+			name: "MaxNodeAge (hash:ignore)",
+			mutate: func(nc *v1alpha1.GCENodeClass) {
+				nc.Spec.MaxNodeAge = &metav1.Duration{Duration: 336 * time.Hour}
+			},
+			want: "",
+		},
+		{
 			name: "ImageFamily",
 			mutate: func(nc *v1alpha1.GCENodeClass) {
 				ubuntu := v1alpha1.ImageFamilyUbuntu
@@ -474,4 +484,60 @@ func TestNodeClassDriftFieldCoverage(t *testing.T) {
 			require.Equal(t, tt.want, got, "field %q: unexpected drift reason", tt.name)
 		})
 	}
+}
+
+func TestIsAgeDrifted(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	maxAge := 336 * time.Hour
+	claimAged := func(name string, age time.Duration) *karpv1.NodeClaim {
+		return &karpv1.NodeClaim{ObjectMeta: metav1.ObjectMeta{
+			Name:              name,
+			CreationTimestamp: metav1.NewTime(now.Add(-age)),
+		}}
+	}
+	withMaxAge := func(d *time.Duration) *v1alpha1.GCENodeClass {
+		nc := &v1alpha1.GCENodeClass{}
+		if d != nil {
+			nc.Spec.MaxNodeAge = &metav1.Duration{Duration: *d}
+		}
+		return nc
+	}
+
+	tests := []struct {
+		name      string
+		nodeClass *v1alpha1.GCENodeClass
+		nodeClaim *karpv1.NodeClaim
+		want      karpcloudprovider.DriftReason
+	}{
+		{name: "unset never drifts", nodeClass: withMaxAge(nil), nodeClaim: claimAged("a", 10000*time.Hour), want: ""},
+		{name: "zero never drifts", nodeClass: withMaxAge(ptr(time.Duration(0))), nodeClaim: claimAged("a", 10000*time.Hour), want: ""},
+		{name: "no creation timestamp never drifts", nodeClass: withMaxAge(&maxAge), nodeClaim: &karpv1.NodeClaim{}, want: ""},
+		{name: "below 90% never drifts", nodeClass: withMaxAge(&maxAge), nodeClaim: claimAged("a", maxAge*89/100), want: ""},
+		{name: "at max always drifts", nodeClass: withMaxAge(&maxAge), nodeClaim: claimAged("a", maxAge), want: AgeDrift},
+		{name: "past max always drifts", nodeClass: withMaxAge(&maxAge), nodeClaim: claimAged("zzz", maxAge+time.Hour), want: AgeDrift},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			cp := &CloudProvider{now: func() time.Time { return now }}
+			require.Equal(t, tt.want, cp.isAgeDrifted(tt.nodeClaim, tt.nodeClass))
+		})
+	}
+}
+
+func TestAgeDriftThreshold(t *testing.T) {
+	t.Parallel()
+
+	maxAge := 336 * time.Hour
+	seen := map[time.Duration]bool{}
+	for _, name := range []string{"default-abc12", "default-def34", "default-ghi56", "default-jkl78"} {
+		got := ageDriftThreshold(name, maxAge)
+		require.Equal(t, got, ageDriftThreshold(name, maxAge), "threshold must be deterministic for %q", name)
+		require.GreaterOrEqual(t, got, maxAge*9/10, "threshold below 90%% for %q", name)
+		require.LessOrEqual(t, got, maxAge, "threshold above maxAge for %q", name)
+		seen[got] = true
+	}
+	require.Greater(t, len(seen), 1, "names should spread across the jitter window")
 }
