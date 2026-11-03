@@ -40,9 +40,12 @@ git checkout downstream && git tag -s v0.7.0-e2b.1 && git push origin v0.7.0-e2b
 ```
 
 `.github/workflows/e2b-image.yaml` then builds with `ko` and pushes
-`ghcr.io/e2b-dev/karpenter-provider-gcp:<tag>` (signed, with build provenance and an SPDX SBOM). It refuses a
-tag whose commit is not on `downstream`. The chart is upstream's: point `controller.image.repository` and `tag` at this image.
+`ghcr.io/e2b-dev/karpenter-provider-gcp:<tag>` (signed, with build provenance and an SPDX SBOM), and packages
+`charts/karpenter` from the same commit as `oci://ghcr.io/e2b-dev/karpenter-provider-gcp/charts/karpenter`
+version `X.Y.Z-e2b.N` with the tag as its appVersion, so the chart's CRDs match the controller and its image tag
+defaults to the release. On `downstream` the chart's default `controller.image.repository` is this fork's image.
+It refuses a tag whose commit is not on `downstream`.
 
 The workflow logs in to GitHub Container Registry with its own `GITHUB_TOKEN`, so it needs no secrets or variables. The fork is open source, so
-the image is public. A package GitHub creates on the first push starts private: after the first release, open the package's settings
+the image and chart are public. A package GitHub creates on the first push starts private: after the first release, open each package's settings
 (github.com/orgs/e2b-dev/packages) and set its visibility to Public, and confirm the repository has write access under "Manage Actions access".

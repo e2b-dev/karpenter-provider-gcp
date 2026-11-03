@@ -1,6 +1,7 @@
 name: e2b image build
 
-# Builds the e2b downstream controller image. See DOWNSTREAM.md.
+# Builds the e2b downstream controller image and publishes the chart that
+# matches it. See DOWNSTREAM.md.
 #
 # Push a tag vX.Y.Z-e2b.N (X.Y.Z is the upstream release the branch is based on,
 # N our counter) on a commit that is on the `downstream` branch. Upstream's own
@@ -95,6 +96,20 @@ jobs:
           subject-name: ghcr.io/e2b-dev/karpenter-provider-gcp
           subject-digest: ${{ steps.image.outputs.digest }}
           push-to-registry: false
+
+      # The chart that matches the image: same CRDs as the controller, chart
+      # version = the tag without its v, appVersion = the tag so the image tag
+      # defaults to it. GitHub-hosted runners ship helm.
+      - name: Package and publish chart
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHART_VERSION: ${{ env.tag }}
+        run: |
+          CHART_VERSION=${CHART_VERSION#v}
+          printf '%s' "$GITHUB_TOKEN" | helm registry login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          helm dependency build charts/karpenter
+          helm package charts/karpenter --version "$CHART_VERSION" --app-version "$tag" -d "$RUNNER_TEMP/charts"
+          helm push "$RUNNER_TEMP/charts/karpenter-$CHART_VERSION.tgz" oci://ghcr.io/e2b-dev/karpenter-provider-gcp/charts
 
       - name: Retain SPDX SBOMs
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
