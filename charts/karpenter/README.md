@@ -110,7 +110,7 @@ serviceMonitor:
 | controller.featureGates.terminateFirstRepair | bool | `false` | terminateFirstRepair is ALPHA and is disabled by default. Allows repair to terminate an unhealthy node before launching its replacement on a capacity-constrained NodePool. Only takes effect with nodeRepair enabled and legacyNodeRepair disabled. |
 | controller.healthProbe.port | int | `8081` |  |
 | controller.image.pullPolicy | string | `"IfNotPresent"` |  |
-| controller.image.repository | string | `"public.ecr.aws/cloudpilotai/gcp/karpenter"` |  |
+| controller.image.repository | string | `"ghcr.io/e2b-dev/karpenter-provider-gcp"` |  |
 | controller.image.tag | string | `""` |  |
 | controller.metrics.port | int | `8080` |  |
 | controller.priorityClassName | string | `"gmp-critical"` |  |

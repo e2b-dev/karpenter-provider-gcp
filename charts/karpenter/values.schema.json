@@ -197,7 +197,7 @@
             "repository": {
               "type": "string",
               "description": "Controller image repository.",
-              "default": "public.ecr.aws/cloudpilotai/gcp/karpenter"
+              "default": "ghcr.io/e2b-dev/karpenter-provider-gcp"
             },
             "tag": {
               "type": "string",
