@@ -182,6 +182,25 @@ The swap file takes its space from the boot disk, so Karpenter adds its size to 
 
 `enabled: true` requires `bootDiskProfile` and `kubeletConfiguration.failSwapOn: false`. Nodes don't inherit swap or zswap from the GKE node pool that Karpenter uses as its bootstrap template. Without `linuxNodeConfig.swap`, provisioning the swap device or file is up to the node image or a DaemonSet.
 
+### Graceful node shutdown
+
+Give pods time to terminate when GCE stops or deletes the VM:
+
+```yaml
+kubeletConfiguration:
+  shutdownGracePeriod: 30s
+  shutdownGracePeriodCriticalPods: 15s
+```
+
+- `shutdownGracePeriod` — how long the node delays its shutdown for pods to terminate; setting it turns on graceful node shutdown
+- `shutdownGracePeriodCriticalPods` — the part of `shutdownGracePeriod` reserved for critical pods, which terminate last
+
+Spot nodes default to `30s` and `15s`. On-demand nodes keep the values in the kubelet configuration of the GKE node pool that Karpenter uses as its bootstrap template, and have no graceful shutdown when that pool has none. GKE enables it on some machine types and not others, so the result depends on which pool is the template. Set both fields to make every node the same.
+
+Values in the GCENodeClass replace the Spot defaults and the template's values. When only `shutdownGracePeriod` is set, a default or template value of `shutdownGracePeriodCriticalPods` that is larger is lowered to `shutdownGracePeriod`. Both fields take a Go duration such as `30s` or `1m30s`.
+
+> **Note:** `shutdownGracePeriodCriticalPods` requires `shutdownGracePeriod` and must not exceed it, because the kubelet does not start otherwise.
+
 ## Static hugepages
 
 Set `spec.linuxNodeConfig.hugepages` to pre-allocate hugepages on every node that the GCENodeClass provisions. The node allocates the pages at boot, before the kubelet starts, and reports them as `hugepages-2Mi` and `hugepages-1Gi` node capacity.
