@@ -108,8 +108,8 @@ type Options struct {
 	// LaunchTimeout is how long a NodeClaim may keep failing to launch with a
 	// non-capacity error before karpenter core deletes and replaces it.
 	LaunchTimeout time.Duration
-	// Telemetry sends anonymized cluster resource totals and Spot interruption
-	// events to CloudPilot AI. Off unless enabled.
+	// Telemetry sends anonymized resource totals and Spot interruption events
+	// to CloudPilot AI. Off unless enabled.
 	Telemetry bool
 }
 
@@ -128,7 +128,7 @@ func (o *Options) AddFlags(fs *coreoptions.FlagSet) {
 	fs.DurationVar(&o.IPSpaceExhaustedTTL, ipSpaceExhaustedTTLFlagName, env.WithDefaultDuration(ipSpaceExhaustedTTLEnvVarName, DefaultIPSpaceExhaustedTTL), "How long an instance type, zone and capacity type stays unavailable after a launch fails with IP_SPACE_EXHAUSTED on every pod range. Must be positive.")
 	fs.DurationVar(&o.UnsupportedConfigurationTTL, unsupportedConfigurationTTLFlagName, env.WithDefaultDuration(unsupportedConfigurationTTLEnvVarName, DefaultUnsupportedConfigurationTTL), "How long an instance type, zone and capacity type stays unavailable after GCE reports the zone does not support the requested configuration (MACHINE_TYPE_UNSUPPORTED or configuration_availability). Must be positive.")
 	fs.DurationVar(&o.LaunchTimeout, launchTimeoutFlagName, env.WithDefaultDuration(launchTimeoutEnvVarName, DefaultLaunchTimeout), "How long a NodeClaim may keep failing to launch with a non-capacity error before it is deleted and replaced. Must be positive.")
-	fs.BoolVar(&o.Telemetry, telemetryFlagName, env.WithDefaultBool(telemetryEnvVarName, false), "Send anonymized cluster resource totals and Spot interruption events to CloudPilot AI.")
+	fs.BoolVar(&o.Telemetry, telemetryFlagName, env.WithDefaultBool(telemetryEnvVarName, false), "Send anonymized resource totals and Spot interruption events to CloudPilot AI.")
 }
 
 func (o *Options) Parse(fs *coreoptions.FlagSet, args ...string) error {
