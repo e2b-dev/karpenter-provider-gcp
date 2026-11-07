@@ -156,6 +156,8 @@ spec:
             - name: LAUNCH_TIMEOUT
               value: "{{ . }}"
             {{- end }}
+            - name: TELEMETRY
+              value: "{{ .Values.controller.settings.telemetry }}"
             - name: METRICS_PORT
               value: "{{ .Values.controller.metrics.port }}"
             - name: KARPENTER_SERVICE

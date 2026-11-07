@@ -461,6 +461,11 @@
               "type": "string",
               "description": "How long a NodeClaim may keep failing to launch with a non-capacity error before it is deleted and replaced (e.g. 10m). Leave empty for the controller default of 5m. Must be positive.",
               "default": ""
+            },
+            "telemetry": {
+              "type": "boolean",
+              "description": "Send anonymized cluster resource totals and Spot interruption events to CloudPilot AI.",
+              "default": false
             }
           }
         }
