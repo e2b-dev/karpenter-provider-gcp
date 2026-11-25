@@ -1,6 +1,6 @@
 # e2b downstream branch
 
-This fork carries patches that are not yet in `cloudpilot-ai/karpenter-provider-gcp`
+This fork carries patches that are not yet in `karpenter-gcp/karpenter-provider-gcp`
 and builds the controller image e2b runs. Three kinds of branch keep that
 separate from upstreaming.
 
@@ -25,7 +25,7 @@ Commits need a `Signed-off-by` (DCO) and a good signature. A branch for upstream
 Fast-forward `main` from upstream, then merge `main` into `downstream`:
 
 ```
-git fetch upstream            # git remote add upstream https://github.com/cloudpilot-ai/karpenter-provider-gcp.git
+git fetch upstream            # git remote add upstream https://github.com/karpenter-gcp/karpenter-provider-gcp.git
 git checkout main && git merge --ff-only upstream/main && git push origin main
 git checkout downstream && git merge main
 ```

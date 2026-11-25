@@ -5,7 +5,7 @@ name: e2b image build
 #
 # Push a tag vX.Y.Z-e2b.N (X.Y.Z is the upstream release the branch is based on,
 # N our counter) on a commit that is on the `downstream` branch. Upstream's own
-# workflows are gated to cloudpilot-ai/karpenter-provider-gcp and never run here;
+# workflows are gated to karpenter-gcp/karpenter-provider-gcp and never run here;
 # this one is gated the other way and never runs upstream.
 on:
   push:
@@ -63,7 +63,7 @@ jobs:
         env:
           IMAGE_TAG: ${{ env.tag }}
         run: |
-          IMAGE=$(ko build --bare github.com/cloudpilot-ai/karpenter-provider-gcp/cmd/controller \
+          IMAGE=$(ko build --bare github.com/karpenter-gcp/karpenter-provider-gcp/cmd/controller \
             --tags "$IMAGE_TAG" --sbom=spdx --sbom-dir "$RUNNER_TEMP/sboms")
           # ko includes the release tag before the digest; retain the immutable reference.
           IMAGE=${IMAGE/":$IMAGE_TAG@"/@}
